@@ -1,0 +1,80 @@
+name: TradingView Analysis Bot
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Clone Private Repository
+      run: |
+        git clone git@github.com:sandeeptuduop-lang/tradingview-analysis-bot.git private_repo
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Google Chrome
+      run: |
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+
+    - name: Install Tesseract OCR
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tesseract-ocr
+
+    - name: Install Python Packages
+      run: |
+        pip install selenium webdriver-manager gspread oauth2client pyotp opencv-python-headless pytesseract numpy
+
+    - name: Run TradingView Bot
+      env:
+        TV_EMAIL: ${{ secrets.TV_EMAIL }}
+        TV_PASSWORD: ${{ secrets.TV_PASSWORD }}
+        TV_2FA_SECRET: ${{ secrets.TV_2FA_SECRET }}
+        GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      run: |
+        cd private_repo
+        python main.py
+
+    - name: Upload Debug Screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-screenshots-${{ github.run_id }}
+        path: |
+          private_repo/debug_screenshots/*.png
+          private_repo/debug_screenshots/*.html
+          private_repo/debug_screenshots/*.txt
+          private_repo/screenshots_30min/*.png
+          private_repo/screenshots_5min/*.png
+        retention-days: 7
+
+    - name: List Debug Files
+      if: always()
+      run: |
+        echo "=== Debug Screenshots ==="
+        ls -la private_repo/debug_screenshots/ || echo "No debug screenshots folder"
+
+        echo ""
+        echo "=== 30min Screenshots ==="
+        ls -la private_repo/screenshots_30min/ || echo "No 30min screenshots"
+
+        echo ""
+        echo "=== 5min Screenshots ==="
+        ls -la private_repo/screenshots_5min/ || echo "No 5min screenshots"
