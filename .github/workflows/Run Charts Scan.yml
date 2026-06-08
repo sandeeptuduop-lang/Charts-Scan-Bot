@@ -10,16 +10,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Setup SSH
+    - name: Setup SSH Keys
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-        chmod 600 ~/.ssh/id_ed25519
+
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/repo1_key
+        chmod 600 ~/.ssh/repo1_key
+
+        echo "${{ secrets.SSH_PRIVATE_KEY_2 }}" > ~/.ssh/repo2_key
+        chmod 600 ~/.ssh/repo2_key
+
         ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-    - name: Clone Private Repository
+        cat > ~/.ssh/config << EOF
+        Host repo1
+          HostName github.com
+          User git
+          IdentityFile ~/.ssh/repo1_key
+          IdentitiesOnly yes
+
+        Host repo2
+          HostName github.com
+          User git
+          IdentityFile ~/.ssh/repo2_key
+          IdentitiesOnly yes
+        EOF
+
+        chmod 600 ~/.ssh/config
+
+    - name: Clone 5 Min Repository
       run: |
-        git clone git@github.com:sandeeptuduop-lang/tradingview-analysis-bot.git private_repo
+        git clone git@repo1:sandeeptuduop-lang/tradingview-analysis-bot.git private_repo_5min
+
+    - name: Clone 30 Min Repository
+      run: |
+        git clone git@repo2:sandeeptuduop-lang/tradingview-analysis-bot-30min.git private_repo_30min
 
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -46,39 +71,57 @@ jobs:
         python -m pip install --upgrade pip
         pip install selenium webdriver-manager gspread oauth2client pyotp opencv-python-headless pytesseract numpy
 
-    - name: Run TradingView Bot
+    - name: Run 5 Min Bot
       env:
         TV_EMAIL: ${{ secrets.TV_EMAIL }}
         TV_PASSWORD: ${{ secrets.TV_PASSWORD }}
         TV_2FA_SECRET: ${{ secrets.TV_2FA_SECRET }}
         GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       run: |
-        cd private_repo
+        cd private_repo_5min
         python main.py
 
-    - name: Upload Debug Screenshots
+    - name: Run 30 Min Bot
+      env:
+        TV_EMAIL: ${{ secrets.TV_EMAIL }}
+        TV_PASSWORD: ${{ secrets.TV_PASSWORD }}
+        TV_2FA_SECRET: ${{ secrets.TV_2FA_SECRET }}
+        GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      run: |
+        cd private_repo_30min
+        python main.py
+
+    - name: Upload 5 Min Debug Files
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: debug-screenshots-${{ github.run_id }}
+        name: debug-5min-${{ github.run_id }}
         path: |
-          private_repo/debug_screenshots/*.png
-          private_repo/debug_screenshots/*.html
-          private_repo/debug_screenshots/*.txt
-          private_repo/screenshots_30min/*.png
-          private_repo/screenshots_5min/*.png
+          private_repo_5min/debug_screenshots/*.png
+          private_repo_5min/debug_screenshots/*.html
+          private_repo_5min/debug_screenshots/*.txt
+          private_repo_5min/screenshots_5min/*.png
         retention-days: 7
 
-    - name: List Debug Files
+    - name: Upload 30 Min Debug Files
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-30min-${{ github.run_id }}
+        path: |
+          private_repo_30min/debug_screenshots/*.png
+          private_repo_30min/debug_screenshots/*.html
+          private_repo_30min/debug_screenshots/*.txt
+          private_repo_30min/screenshots_30min/*.png
+        retention-days: 7
+
+    - name: List Files
       if: always()
       run: |
-        echo "=== Debug Screenshots ==="
-        ls -la private_repo/debug_screenshots/ || echo "No debug screenshots folder"
+        echo "===== 5 MIN ====="
+        ls -la private_repo_5min/debug_screenshots/ || true
+        ls -la private_repo_5min/screenshots_5min/ || true
 
-        echo ""
-        echo "=== 30min Screenshots ==="
-        ls -la private_repo/screenshots_30min/ || echo "No 30min screenshots"
-
-        echo ""
-        echo "=== 5min Screenshots ==="
-        ls -la private_repo/screenshots_5min/ || echo "No 5min screenshots"
+        echo "===== 30 MIN ====="
+        ls -la private_repo_30min/debug_screenshots/ || true
+        ls -la private_repo_30min/screenshots_30min/ || true
