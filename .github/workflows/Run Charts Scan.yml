@@ -2,11 +2,46 @@ name: TradingView Analysis Bot
 
 on:
   schedule:
-    - cron: '0 */12 * * *'
+    - cron: '0 */12 * * *'  # Runs at 00:00 and 12:00 UTC
   workflow_dispatch:
 
+# This prevents multiple workflow runs from running concurrently
+# If a run is in progress, new runs will wait in queue
+concurrency:
+  group: tradingview-bot
+  cancel-in-progress: false  # Don't cancel running, just queue or skip
+
 jobs:
+  check-previous-run:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+    - name: Check if previous workflow is still running
+      id: check
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Get all workflow runs for this workflow that are in progress
+        # Exclude the current run (which is just starting)
+        CURRENT_RUN_ID="${{ github.run_id }}"
+        
+        IN_PROGRESS_RUNS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=in_progress&per_page=100" \
+          | jq -r --arg CURRENT "$CURRENT_RUN_ID" '.workflow_runs[] | select(.id != ($CURRENT | tonumber)) | .id')
+        
+        if [ -n "$IN_PROGRESS_RUNS" ]; then
+          echo "⚠️ Previous workflow runs still in progress:"
+          echo "$IN_PROGRESS_RUNS"
+          echo "should_run=false" >> $GITHUB_OUTPUT
+        else
+          echo "✅ No previous runs in progress"
+          echo "should_run=true" >> $GITHUB_OUTPUT
+        fi
+
   run-bot:
+    needs: check-previous-run
+    if: needs.check-previous-run.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
