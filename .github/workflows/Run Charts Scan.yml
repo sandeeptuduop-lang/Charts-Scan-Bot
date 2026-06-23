@@ -2,14 +2,13 @@ name: TradingView Analysis Bot
 
 on:
   schedule:
-    - cron: '0 */2 * * *'  # Runs at 00:00 and 12:00 UTC
+    - cron: '0 */2 * * *'  # Runs every 2 hours
   workflow_dispatch:
 
 # This prevents multiple workflow runs from running concurrently
-# If a run is in progress, new runs will wait in queue
 concurrency:
   group: tradingview-bot
-  cancel-in-progress: false  # Don't cancel running, just queue or skip
+  cancel-in-progress: false
 
 jobs:
   check-previous-run:
@@ -22,8 +21,6 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Get all workflow runs for this workflow that are in progress
-        # Exclude the current run (which is just starting)
         CURRENT_RUN_ID="${{ github.run_id }}"
         
         IN_PROGRESS_RUNS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
@@ -126,37 +123,29 @@ jobs:
         cd private_repo_30min
         python main.py
 
-    - name: Upload 5 Min Debug Files
+    - name: Upload 5 Min Artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: debug-5min-${{ github.run_id }}
+        name: 5min-artifacts-${{ github.run_id }}
         path: |
-          private_repo_5min/debug_screenshots/*.png
-          private_repo_5min/debug_screenshots/*.html
-          private_repo_5min/debug_screenshots/*.txt
-          private_repo_5min/screenshots_5min/*.png
+          private_repo_5min/artifacts/**/*
         retention-days: 7
 
-    - name: Upload 30 Min Debug Files
+    - name: Upload 30 Min Artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: debug-30min-${{ github.run_id }}
+        name: 30min-artifacts-${{ github.run_id }}
         path: |
-          private_repo_30min/debug_screenshots/*.png
-          private_repo_30min/debug_screenshots/*.html
-          private_repo_30min/debug_screenshots/*.txt
-          private_repo_30min/screenshots_30min/*.png
+          private_repo_30min/artifacts/**/*
         retention-days: 7
 
     - name: List Files
       if: always()
       run: |
-        echo "===== 5 MIN ====="
-        ls -la private_repo_5min/debug_screenshots/ || true
-        ls -la private_repo_5min/screenshots_5min/ || true
-
-        echo "===== 30 MIN ====="
-        ls -la private_repo_30min/debug_screenshots/ || true
-        ls -la private_repo_30min/screenshots_30min/ || true
+        echo "===== 5 MIN ARTIFACTS ====="
+        find private_repo_5min/artifacts -type f -name "*.png" -o -name "*.txt" -o -name "*.html" | head -20 || echo "No files found"
+        echo ""
+        echo "===== 30 MIN ARTIFACTS ====="
+        find private_repo_30min/artifacts -type f -name "*.png" -o -name "*.txt" -o -name "*.html" | head -20 || echo "No files found"
